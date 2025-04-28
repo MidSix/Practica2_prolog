@@ -1,15 +1,14 @@
 %This was copied from the tab.pl file uploaded by the teacher.
 %------------------------------------------------------------
-%the implication is already defined in prolog "->" with a precedence of 1050 but this one generates lots of problems so, it's better to just define a-her operator.
+%the implication is already defined in prolog "->" with a precedence of 1050. And we must use it.
 %"yfx" asociatividad por la izquierda
 :- op(599, yfx, v).       % disyunción
 :- op(400, yfx, &).       % conjunción
-:- op(200, fy, -).      % negación
-:- op(650,yfx, --->).    % Implicacion
-:- op(670,yfx, <--->).   % bicondicional  - the precedence of the bicondicional must be highter than the implication to satisfy the order of execution of logical operators.
+:- op(200, fy, -).        % negación
+:- op(670, yfx, <-->).    % bicondicional  - the precedence of the bicondicional must be highter than the implication to satisfy the order of execution of logical operators.
 
-% '=' tiene una precedencia de 700, si a algun operador le pones una precedencia mayor entonces = se ejecutara primero, o sea, va a intentar igualar F a una estructura que aun
-% no esta definida, por eso todos estan debajo de 700, aunque si quisiera ponerlos por encima se podria, pero habria que poner parentesis para especificar que quieres que 
+% '=' tiene una precedencia de 700, si a algún operador le pones una precedencia mayor entonces "="" se ejecutará primero, o sea, va a intentar igualar F a una estructura que aún
+% no está definida, por eso todos están debajo de 700, aunque si quisiera ponerlos por encima se podría, pero habría que poner paréntesis para especificar qué quieres que
 %se ejecute primero eso y luego igualar F a ello.
 
 literal_(L) :- atom(L).
@@ -59,12 +58,21 @@ todnf([A|As],F v G) :- toclause(A,F), todnf(As,G).
 
 %from here is our code:
 
+%first stage:
+%Implementation of unfold/2 predicate
+%------------------------------------------------------------
+%usage example:
+/*
+    unfold(((a -> b) v (c <--> d) -> d), F)
+    as first argument the raw formula and this will return F.
+    Being F the unfolded formula(without implication and biconditional)
+*/
 unfold(F, Unfolded) :- %base-case and also manage the "-" operator because of the implementation of literal_/1 predicate.
     literal_(F),
     !,
     Unfolded = F.
 
-%-: 
+%-:
 unfold(F,Unfolded) :-
     F = -(A),
     unfold(A, A_unfolded),
@@ -86,14 +94,46 @@ unfold(F, Unfolded) :-
 
 % implication:
 unfold(F, Unfolded) :-
-    F = A ---> B,
+    F = (A -> B),
     unfold(A, A_unfolded),
     unfold(B, B_unfolded),
     Unfolded = - A_unfolded v B_unfolded.
 
 % biconditional
 unfold(F, Unfolded) :-
-    F = A <---> B,
+    F = (A <--> B),
     unfold(A, A_unfolded),
     unfold(B, B_unfolded),
     Unfolded = (- A_unfolded v B_unfolded) & (- B_unfolded v A_unfolded).
+%------------------------------------------------------------
+
+%Second stage:
+%is basically understand how to use tab_ and what returns exactly.
+
+%------------------------------------------------------------
+%summary:
+/*
+    returns the open branches of the semantic table related to the unfolded formula we passed.
+    the open branches are the models of the formula.
+    models are interpretations that makes the formula true.
+    interpretations are every single row of a classic true table.
+
+    example output:
+    B = [a, -b, c, -d], B stands for branch. Inside the list we have every single literal that must be true
+    in order that the formula becomes true.
+
+    You can prove this either by asking chatgpt to make the semantic table of the formula step-by-step or
+    just writing it by yourself.
+
+    usage example:
+    unfold(((a -> b) v (c <--> d) -> d), F), tab_([F], [], B).
+    first unfold the formula that will be stored in F. and then pass F as an argument to tab_. That's all.
+
+Second stage finished.
+*/
+%------------------------------------------------------------
+
+%Third stage:
+%implementation of the diabolical Quine-McCluskey. Seems hard.
+
+
