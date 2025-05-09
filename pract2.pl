@@ -9,11 +9,10 @@
 :- op(599, yfx, v).       % disyunción
 :- op(400, yfx, &).       % conjunción
 :- op(200, fy, -).        % negación
-:- op(670, xfy, <-->).    % bicondicional  - the precedence of the bicondicional must be highter than the implication to satisfy the order of execution of logical operators.
+:- op(1070, xfy, <-->).    % bicondicional  - the precedence of the bicondicional must be highter than the implication to satisfy the order of execution of logical operators.
 
-% '=' tiene una precedencia de 700, si a algún operador le pones una precedencia mayor entonces "="" se ejecutará primero, o sea, va a intentar igualar F a una estructura que aún
-% no está definida, por eso todos están debajo de 700, aunque si quisiera ponerlos por encima se podría, pero habría que poner paréntesis para especificar qué quieres que
-%se ejecute primero eso y luego igualar F a ello.
+% '=' tiene una precedencia de 700, si a algún operador le pones una precedencia mayor entonces "=" se ejecutará primero, o sea, va a intentar igualar F a una estructura que aún
+% no está definida, para resolver este problema hemos de usar paréntesis en estos casos: F = (A -> B) por ejemplo.
 
 literal_(L) :- atom(L).
 literal_(- L) :- atom(L).
@@ -71,13 +70,13 @@ todnf([A|As],F v G) :- toclause(A,F), todnf(As,G).
     as first argument the raw formula and this will return F.
     Being F the unfolded formula(without implication and biconditional)
 */
-unfold(F, Unfolded) :- %base-case and also manage the "-" operator because of the implementation of literal_/1 predicate.
+unfold(F, Unfolded) :- %base-case and also manage the "-" (applied in literal) because of the implementation of literal_/1 predicate.
     literal_(F),
     !,
     Unfolded = F.
 
-%-:
-unfold(F,Unfolded) :-
+%-: 
+unfold(F,Unfolded) :- %"A" could be a formula like: p -> q, so this rule is to address the problem when we have the negation of a non-literal like that.
     F = -(A),
     unfold(A, A_unfolded),
     Unfolded = -(A_unfolded).
