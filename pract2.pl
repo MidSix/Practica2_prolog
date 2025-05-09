@@ -1,3 +1,7 @@
+%Authors:
+%Sebastián David Moreno Expósito; sebastian.exposito@udc.es
+%Xoel Sánchez Dacoba; xoel.sanchez.dacoba@udc.es
+
 %This was copied from the tab.pl file uploaded by the teacher.
 %------------------------------------------------------------
 %the implication is already defined in prolog "->" with a precedence of 1050. And we must use it.
@@ -5,7 +9,7 @@
 :- op(599, yfx, v).       % disyunción
 :- op(400, yfx, &).       % conjunción
 :- op(200, fy, -).        % negación
-:- op(670, yfx, <-->).    % bicondicional  - the precedence of the bicondicional must be highter than the implication to satisfy the order of execution of logical operators.
+:- op(670, xfy, <-->).    % bicondicional  - the precedence of the bicondicional must be highter than the implication to satisfy the order of execution of logical operators.
 
 % '=' tiene una precedencia de 700, si a algún operador le pones una precedencia mayor entonces "="" se ejecutará primero, o sea, va a intentar igualar F a una estructura que aún
 % no está definida, por eso todos están debajo de 700, aunque si quisiera ponerlos por encima se podría, pero habría que poner paréntesis para especificar qué quieres que
@@ -32,8 +36,8 @@ tab_([F|L],B,Bn) :- literal_(F),!,addlit_(F,B,B1),tab_(L,B1,Bn).
 % Does - insert complementary literals in the B (B1) list.
 
 tab_([- - F|L],B,Bn) :- tab_([F|L],B,Bn).  % - -
-tab_([F v G|L],B,Bn) :- tab_([F|L],B,Bn); tab_([G|L],B,Bn).  %
-tab_([- (F & G)|L],B,Bn) :- tab_([- F|L],B,Bn),!; tab_([- G|L],B,Bn).  % negated and is or of the negations
+tab_([F v G|L],B,Bn) :- tab_([F|L],B,Bn); tab_([G|L],B,Bn).
+tab_([- (F & G)|L],B,Bn) :- tab_([- F|L],B,Bn); tab_([- G|L],B,Bn).  % negated and is or of the negations
 tab_([F & G|L],B,Bn) :- tab_([F,G|L],B,Bn).
 tab_([- (F v G) |L],B,Bn) :- tab_([- F,- G|L],B,Bn).  % negated or is and of the negations
 
@@ -135,5 +139,3 @@ Second stage finished.
 
 %Third stage:
 %implementation of the diabolical Quine-McCluskey. Seems hard.
-
-
