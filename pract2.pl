@@ -137,70 +137,173 @@ Second stage finished.
 %------------------------------------------------------------
 
 %Third stage:
-%implementation of the diabolical Quine-McCluskey. Seems hard.
+%implementation of Quine-McCluskey.(Kind of)
+%------------------------------------------------------------
 
 :- dynamic minterm/3.
-minterms([]).%quite simple function here
+
+minterms([]). % Minterms will recieve a list of models, not directly from the tab_ predicate but from the remove_redundant predicate.
 minterms([Model|Rest]) :-
-    assertz(minterm([Model], Model, 1)), %As said in the material, this creates kind of a table with the models, 
+    sort_lits(Model, SortedModel), % Sort the model to ensure consistent ordering
+    length(SortedModel, Size), % Get the size of the model
+    assertz(minterm([SortedModel], SortedModel, Size)), % As said in the material, this creates kind of a table with the models
     %all being minterm(ID,Model,size)
     %ID is the ID of the model, first model is itslf, as we proccess quine-mccluskey the id will merge with other ones for example:
-    %the model with id[[a, -b, c, -d], [a, b, c, -d]] will contain the merge of the two models as [a,c,-d]
-    %size refers to the amount of models it covers, firstly is 1, but when we merge two models, the size will be 2 and so on.
+    %the model with id[[a, -b, c, -d], [a, b, c, -d]] will contain the merge of the two models as [a,c,-d])
+    %size refers to the amount of literals it contains, so we can use it to merge only with models that have the same size.
     minterms(Rest).
 
-min_set_cover(MinimalSets) :- %This is the main predicate to get the minimum set of implicants that cover all the models.
-    findall((Id, Implicant), minterm(Id, Implicant, _), PrimeImplicants),
-    findall(Model, minterm([Model], _, _), Models),
-    findall(Set, covers_all(PrimeImplicants, Models, Set), AllCovers),
-    minimal_sets(AllCovers, MinimalSets).
+clear_minterms :-
+    retractall(minterm(_, _, _)). % Clear the minterms database
+% Sorts the literals in a model to ensure consistent ordering, as tab_ does not guarantee the order of literals o_o
+sort_lits(Model, SortedModel) :-
+    predsort(literal_compare, Model, SortedModel).
 
-covers_all(PrimeImplicants, Models, Set) :-%This is to generate the subsets of implicants that cover all the models
-    subset(Set, PrimeImplicants), 
-    covers(Set, Models).          
+literal_compare(Order, X, Y) :-
+    base_atom(X, BX),
+    base_atom(Y, BY),
+    compare(Order, BX, BY).
 
-covers(Set, Models) :- % This is to check if the implicants cover all the models as to generate the subsets 
-    findall(Model, (member((_, Implicant), Set), covers_model(Implicant, Model)), CoveredModels),
-    sort(CoveredModels, CoveredModelsSorted),
-    sort(Models, ModelsSorted),
-    CoveredModelsSorted == ModelsSorted.
-
-covers_model(Implicant, Model) :- %This is to check if the implicant covers the model, is the particular case of the previous predicate definition
-    forall(member(Literal, Model), member(Literal, Implicant)).
-
-minimal_sets(AllCovers, MinimalSets) :- %This is to filter the subsets by size(Remember that we are looking for the minimum ones as to try 
-%to minimize the implicants that cover the most models possible)
-    findall(Length-Set, (member(Set, AllCovers), length(Set, Length)), LengthSets),
-    sort(LengthSets, [MinLength-_|_]),
-    findall(Set, member(MinLength-Set, LengthSets), MinimalSets).
+base_atom(-A, A) :- !.
+base_atom(A, A).
 
 
+remove_redundant([], []). % Removes redundant models: if a model is a superset of another, it is direcly removed.
+remove_redundant([M|Ms], Clean) :-
+    (member(N, Ms), subset(N, M)) -> remove_redundant(Ms, Clean)
+    ; remove_redundant(Ms, Rest), Clean = [M|Rest].
+
+can_merge(Model1, Model2) :- %Returns true if Model1 and Model2 only differ in one literal, and that literal is the same variable with opposite sign
+    length(Model1, N),
+    length(Model2, N),
+    intersection(Model1, Model2, Common),
+    length(Common, N1),
+    N1 is N - 1,
+    subtract(Model1, Common, [Diff1]),
+    subtract(Model2, Common, [Diff2]),
+    base_atom(Diff1, V),
+    base_atom(Diff2, V),
+    Diff1 \= Diff2.
+
+merge_literals_set(M1, M2, Common) :- %fuses the two models leaving only the common literals
+    intersection(M1, M2, Common).
+
+merge_with_one((ID1, Model1, Size), Ms, (IDF, ModelF, SizeF)) :-%finds a model in the list that can be merged with the given one and returns the merged model
+    member((ID2, Model2, Size), Ms),
+    can_merge(Model1, Model2),
+    merge_models((ID1, Model1, Size), (ID2, Model2, Size), (IDF, ModelF, SizeF)), !.
+
+merge_round([], [], []). % Merging round, as the name says, it will merge the minterms that can be merged(same size and one literal difference)
+merge_round([M|Ms], Merged, [M|Unmerged]) :-
+    \+ merge_with_one(M, Ms, _), !,
+    merge_round(Ms, Merged, Unmerged).
+merge_round([M|Ms], [Fusion|Merged], Unmerged) :-
+    merge_with_one(M, Ms, Fusion), !,
+    Fusion = (IDF, ModelF, SizeF),
+    select((ID2, Model2, Size2), Ms, MsRest),
+    merge_models(M, (ID2, Model2, Size2), Fusion),
+    merge_round(MsRest, Merged, Unmerged).
+
+merge_models((ID1, Model1, _), (ID2, Model2, _), (IDF, ModelF, SizeF)) :-%Modifies the merge_models predicate to use merge_literals_set
+    merge_literals_set(Model1, Model2, ModelF),
+    append(ID1, ID2, IDF),
+    length(ModelF, SizeF).
+%------------------------------------------------------------
+%summary:
+/*
+    Firtsly we pass what we got from the tab_ predicate to the remove_redundant predicate so we can introduce directly the models
+    into the minterms predicate. The minterms predicate will create a table with the models and their size.
+    Then we call the merge_round predicate, this will merge the models that can be merged, and return the merged models.
+    
+    The merge_round predicate will call the merge_with_one predicate, this will check if the model can be merged with another one.
+    If it can be merged, it will call the merge_models predicate, which will merge the two models and return the merged model removing previous models
+    from the dynamic predicate minterm/3.
+    This process will be repeated until there are no more models that are compatible to be merged, leaving us with the prime implicants in
+    the dynamic predicate minterm/3.
+    
+    Third stage finished.
+*/
+%------------------------------------------------------------
+
+%Fourth stage:
+%Implementation of the prime implicants to DNF conversion to obtain the minimal set cover
+%------------------------------------------------------------
+
+
+min_set_cover(DNF) :-% Translates each minterm in the dynamic table to a conjunction, and returns the DNF 
+    findall(Model, minterm(_, Model, _), Models0),
+    sort(Models0, Models1),% Sort the models to ensure duplicates are completely removed
+    cover_minim(Models1, Models), % Last step to merge the models that are not prime
+    maplist(list_to_conjunction, Models, Conjunctions),%Firtsly we convert the models to a list of conjunctions(maplist applies the predicate to each element of the list)
+    disjunction_of_list(Conjunctions, DNF),%then we relate each conjunction with the disjunction operator, quite to the point
+    clear_minterms.%To avoid problems with the dynamic predicate, we clear after the process
+
+
+list_to_conjunction([L], LStr) :-% All below is to convert the models to a conjunction, they return a string with the conjunction of the literals
+    literal_to_string(L, LStr).%this is because previously we got anidated formulas like a&(-b&(c& -d))v d instead of (a & -b & c & -d) v d,
+list_to_conjunction(Lits, F) :-% Although this was correct by the associative property, we wanted the DNF to be more readable.
+    maplist(literal_to_string, Lits, StrLits),
+    atomic_list_concat(StrLits, ' & ', Inner),
+    atom_concat('(', Inner, Temp),
+    atom_concat(Temp, ')', F).
+
+literal_to_string(-A, S) :- !,
+    atom_string(A, SA),
+    string_concat('-', SA, S).
+literal_to_string(A, S) :-
+    atom(A),
+    atom_string(A, S).
+
+disjunction_of_list(List, DNF) :-
+    atomic_list_concat(List, ' v ', DNF).
+%------------------------------------------------------------
+    %Fourth stage finished.
+%------------------------------------------------------------
+
+%Fifth stage:
+% Implementation of minimize/2 predicate, universal predicate that will be used to minimize the formula
+%------------------------------------------------------------
+
+minimize(F, Min) :-
+    clear_minterms,
+    unfold(F, UnfoldedFormula),
+    findall(Model, tab_([UnfoldedFormula], [], Model), Models),
+    remove_redundant(Models, CleanModels),
+    minterms(CleanModels),
+    findall((Id, Implicant, Size), minterm(Id, Implicant, Size), MintermsList),
+    merge_round(MintermsList, Merged, Unmerged),
+    clear_minterms,
+    sort(Merged, MergedNoDup),
+    sort(Unmerged, UnmergedNoDup),
+    forall(member((Id, Implicant, _), MergedNoDup), (
+    length(Implicant, Size),
+    assertz(minterm(Id, Implicant, Size))
+    )),
+    forall(member((Id, Implicant, _), UnmergedNoDup), (
+    length(Implicant, Size),
+    assertz(minterm(Id, Implicant, Size))
+    )),
+    min_set_cover(Min), !.
 
 % filepath: ["c:/Users/usuario/Desktop/pract2.pl"].
-% This is a test just for you to see Sebas, use it as you please and then delete it
-%so yeah, this doesn't work, we'll figure somethiung out or else i'll just kill myself.
-%Currently the output is:
-/*
-27 ?- test_min_set_cover.
-FÃ³rmula desplegada:
-- (-a v b v (-c v d)&(-d v c))v d
-Modelos generados:
-[a,-b,c,-d]
-Implicantes primos:
-[([a],a,1),([-b],-b,1),([c],c,1),([-d],-d,1),([a],a,1),([-b],-b,1),([c],c,1),([-d],-d,1),([a],a,1),([-b],-b,1),([c],c,1),([-d],-d,1),([a],a,1),([-b],-b,1),([c],c,1),([-d],-d,1)]
-*/
-test_min_set_cover :-
-    Formula = ((a -> b) v (c <--> d) -> d),
-    unfold(Formula, UnfoldedFormula),
-    writeln('Fórmula desplegada:'),
-    writeln(UnfoldedFormula),
-    tab_([UnfoldedFormula], [], Models),
-    writeln('Modelos generados:'),
-    writeln(Models),
-    minterms(Models),
-    writeln('Implicantes primos:'),
-    findall((Id, Implicant, Size), minterm(Id, Implicant, Size), PrimeImplicants),
-    writeln(PrimeImplicants),
-    min_set_cover(MinimalSets),
-    writeln('Cobertura mínima:'),
-    writeln(MinimalSets).
+% This is a test just for you to see Sebas, use it as you please and then delete it(change F value to the one you want to test)
+test_code :-
+    clear_minterms,
+    F = ((a -> b) & (b -> c) & (c <--> d)) v (-a & -d),
+    unfold(F, UF),
+    writeln('Unfolded: '), writeln(UF),
+    findall(Model, tab_([UF], [], Model), Models),
+    writeln('Modelos generados: '), writeln(Models),
+    remove_redundant(Models, CleanModels),
+    writeln('Modelos no redundantes: '), writeln(CleanModels),
+    minterms(CleanModels),
+    findall((Id, Implicant, Size), minterm(Id, Implicant, Size), MintermsList),
+    writeln('Minterms iniciales: '), writeln(MintermsList),
+    merge_round(MintermsList, Merged, Unmerged),
+    writeln('Merges: '), writeln(Merged),
+    writeln('No fusionados: '), writeln(Unmerged),
+    clear_minterms,
+    forall(member((Id, Implicant, Size), Merged), assertz(minterm(Id, Implicant, Size))),
+    forall(member((Id, Implicant, Size), Unmerged), assertz(minterm(Id, Implicant, Size))),
+    min_set_cover(Min),
+    write('The minimized formula is: '), write(Min), nl.
